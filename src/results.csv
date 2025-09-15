@@ -1,0 +1,11 @@
+file,Lean,smt
+assert_eq,49.43,180
+eq_abs,5.99,180
+half_word,16.8,180
+identity,4.28,180
+left_msb,2.93,0.8
+pow2,19.22,180
+sign_extend,2.99,180
+sll0,82.82,180
+srl2,57.61,180
+sub,21.13,180

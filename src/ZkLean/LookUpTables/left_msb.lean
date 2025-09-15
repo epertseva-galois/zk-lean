@@ -9,6 +9,7 @@ def LEFT_MSB_16 [Field f] : Subtable f 16 :=
   subtableFromMLE (fun x => x[0])
 
 
+
 lemma left_msb_mle_one_chunk [ZKField f] (bv1 bv2 : BitVec 8) (fv1 fv2 : Vector f 8) :
   some bvoutput = map_f_to_bv_8 foutput ->
    some (bool_to_bv bv1[7])  = map_f_to_bv_8 fv1[0]  ->
@@ -30,4 +31,5 @@ lemma left_msb_mle_one_chunk [ZKField f] (bv1 bv2 : BitVec 8) (fv1 fv2 : Vector 
   (bvoutput = bool_to_bv (BitVec.msb bv1))
   =
   (foutput = evalSubtable LEFT_MSB_16 (Vector.append fv1 fv2))
- := by solveMLE LEFT_MSB_16 8
+ := by
+    solveMLE LEFT_MSB_16 8

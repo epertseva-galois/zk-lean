@@ -435,12 +435,12 @@ elab_rules : tactic
   evalTactic (← `(tactic| try valify [$[$idsArr:ident],*]))
   evalTactic (← `(tactic| try simp (config := { failIfUnchanged := false })))  --rw [Nat.mod_eq_of_lt]))
   let nSyntax : TSyntax `num := ⟨Lean.Syntax.mkNumLit (toString n)⟩
-  evalTactic (← `(tactic| findModLT $nSyntax) )
+  -- evalTactic (← `(tactic| findModLT $nSyntax) )
 
-  evalTactic (← `(tactic| try_apply_lemma_hyps [$[$idsArr:ident],*]))
-  evalTactic (← `(tactic| try simp))
+  -- evalTactic (← `(tactic| try_apply_lemma_hyps [$[$idsArr:ident],*]))
+  -- evalTactic (← `(tactic| try simp))
 
-  evalTactic (← `(tactic| intro Leq))
+  -- evalTactic (← `(tactic| intro Leq))
   evalTactic (← `(tactic| try rw [Nat.mod_eq_of_lt]))
   let lemmaName := Name.mkSimple s!"BitVec_ofNat_eq_iff_{n}"
   evalTactic (← `(tactic| rw [$(mkIdent lemmaName):ident]))
@@ -489,8 +489,10 @@ elab_rules : tactic
   evalTactic (← `(tactic| bv_decide (config := {timeout := 300}) ;
     apply $id1:ident ;
     ))
-  evalTactic (← `(tactic| try exact Nat.lt_of_lt_of_le Leq (by decide)))
-  evalTactic (← `(tactic| try exact Nat.lt_of_lt_of_le Leq (by decide)))
+  -- evalTactic (← `(tactic| try exact Nat.lt_of_lt_of_le Leq (by decide)))
+  -- evalTactic (← `(tactic| try exact Nat.lt_of_lt_of_le Leq (by decide)))
+  evalTactic (← `(tactic| try_apply_lemma_hyps [$[$idsArr:ident],*]))
+  evalTactic (← `(tactic| try_apply_lemma_hyps [$[$idsArr:ident],*]))
 
   -- -- use x
 
