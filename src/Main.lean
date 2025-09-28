@@ -3,24 +3,9 @@ import Mathlib.Algebra.Field.ZMod
 import Mathlib.Control.Fold
 import Mathlib.Data.Nat.Prime.Defs
 import Mathlib.Data.ZMod.Defs
-import Mathlib.Algebra.Order.Kleene
---import Std.Do
---import Std.Do.Triple
 import MPL
 import MPL.Triple
 import ZkLean
-import Std.Data.HashMap.Basic
-import Lean.Meta.Basic
-import Lean.Elab.Term
-import Mathlib.Tactic.Ring
-import Std.Tactic.BVDecide
-import Mathlib.Tactic.Linarith
-import ZkLean.LookUpTables
-
-
-open Lean Meta Elab Term
-open Std
---open Std.Do
 
 def main : IO Unit :=
   IO.println s!"Hello!"
@@ -33,7 +18,7 @@ def main : IO Unit :=
 def example1 [ZKField f] : ZKBuilder f (ZKExpr f) := do
   let x: ZKExpr f <- Witnessable.witness
   let one: ZKExpr f := 1
-  ZKBuilder.constrainEq (x * (x - one)) 0
+  constrainEq (x * (x - one)) 0
   return x
 
 def eq8 [Field f] : Subtable f 16 :=
@@ -67,8 +52,8 @@ def step [ZKField f] (prev_st : RISCVState f) : ZKBuilder f (RISCVState f) := do
   let r1 := prev_st.registers[1]
   let r2 := prev_st.registers[2]
 
-  let isEq <- ZKBuilder.lookup eq32 #v[r1, r1, r2, r2] -- Note: This example doesn't really make sense anymore.
-  ZKBuilder.constrainEq new_st.registers[0] isEq
+  let isEq <- lookup eq32 #v[r1, r1, r2, r2] -- Note: This example doesn't really make sense anymore.
+  constrainEq new_st.registers[0] isEq
 
   return new_st
 
@@ -133,12 +118,12 @@ structure JoltR1CSInputs (f : Type):  Type where
   chunk_2: ZKExpr f
   /- ... -/
 
--- A[0] = C * 1 +  var[3] * 829 + ...
+-- A[0] = C * 1 + var[3] * 829 + ...
 -- Example of what we extract from Jolt
 -- TODO: Make a struct for the witness variables in a Jolt step. Automatically extract this from JoltInputs enum?
 def uniform_jolt_constraint [ZKField f] (jolt_inputs: JoltR1CSInputs f) : ZKBuilder f PUnit := do
-  ZKBuilder.constrainR1CS ((1 +  jolt_inputs.chunk_1 ) * 829) 1 1
-  ZKBuilder.constrainR1CS 1 1 ((1 +  jolt_inputs.chunk_1 ) * 829)
+  constrainR1CS ((1 +  jolt_inputs.chunk_1 ) * 829) 1 1
+  constrainR1CS 1 1 ((1 +  jolt_inputs.chunk_1 ) * 829)
   -- ...
 
 --   ...
@@ -148,7 +133,7 @@ def uniform_jolt_constraint [ZKField f] (jolt_inputs: JoltR1CSInputs f) : ZKBuil
 --   ...
 
 def run_circuit' [ZKField f] (circuit: ZKBuilder f a) (witness: List f) : Bool :=
-  let (_circ_states, zk_builder) := runFold circuit default
+  let (_circ_states, zk_builder) := StateT.run circuit default
   let b := semantics_constraints zk_builder.constraints witness (Array.empty)
   b
 
@@ -211,7 +196,7 @@ theorem constraints_seq c1 c2 :
 -- run_circuit : ReaderT [f] (ReaderT (ZKBuilderState f)) bool
 def constrainEq2 [ZKField f] (a b : ZKExpr f) : ZKBuilder f PUnit := do
   -- NOTE: equivalently `constrainR1CS (a - b) 1 0`
-  ZKBuilder.constrainR1CS a 1 b
+  constrainR1CS a 1 b
 
 def circuit1 [ZKField f] : ZKBuilder f PUnit := do
   let a <- Witnessable.witness
@@ -272,50 +257,110 @@ def circuit12 : ZKBuilder (ZMod 7) PUnit := do
 
 
 theorem circuitEq2SoundTry [ZKField f]: (run_circuit' circuit1 [ (a: f), (a:f )] = true) := by
-  simp [run_circuit', runFold, circuit1, FreeM.foldM, Witnessable.witness, ZKBuilder.witness, FreeM.foldM]
-  unfold constrainEq2
-  unfold ZKBuilder.constrainR1CS
+  unfold circuit1
+
+  unfold run_circuit'
+  unfold StateT.run
+  -- unfold circuit1
   unfold default
-  simp
   unfold instInhabitedZKBuilderState
-  simp
   unfold default
-  unfold instInhabitedList
-  unfold Array.instInhabited
-  unfold FreeM.foldM
   simp
+  unfold instInhabitedNat
+  simp
+  unfold instInhabitedList
+  simp
+  unfold Array.instInhabited
+  simp
+  unfold Witnessable.witness
   unfold bind
   unfold Monad.toBind
-  unfold instMonadZKBuilder
-  unfold inferInstance
-  unfold FreeM.instMonad
+  unfold StateT.instMonad -- instMonadZKBuilder
+  unfold instWitnessableZKExpr
   simp
-  repeat unfold FreeM.bind
+  unfold StateT.bind
   simp
-  simp [FreeM.foldM, ZKOpInterp, semantics_constraints, semantics_zkexpr, semantics_zkexpr.eval, semantics_zkexpr.eval]
+  unfold witnessf
+  simp_all
+  -- unfold pure
+  unfold constrainEq2
+  unfold constrainR1CS
+  unfold constrainEq
+  unfold StateT.get
+  unfold StateT.set
+  simp
+  -- unfold pure
+  -- unfold Applicative.toPure
+  unfold Monad.toApplicative
+  unfold StateT.instMonad -- instMonadZKBuilder
+  simp
+  unfold StateT.bind
+  -- unfold StateT.pure
+  simp
+  unfold StateT.map
+  simp
+
+  -- now unfold constraints_semantics
+  unfold semantics_constraints
+  unfold semantics_zkexpr
+  unfold semantics_zkexpr.eval
+  unfold semantics_zkexpr.eval
+  simp
+
+  unfold semantics_constraints
+  rfl
+
 
 theorem circuitEq2Eval [ZKField f]: (run_circuit' circuit1 [ (a: f), (b: f)] = (a == b)) := by
-  simp [run_circuit', runFold, circuit1, FreeM.foldM, Witnessable.witness, ZKBuilder.witness, FreeM.foldM]
-  unfold constrainEq2
-  unfold ZKBuilder.constrainR1CS
-  simp
+
+  unfold run_circuit'
+  unfold StateT.run
+  unfold circuit1
   unfold default
   unfold instInhabitedZKBuilderState
-  simp
   unfold default
+  simp
+  unfold instInhabitedNat
+  simp
   unfold instInhabitedList
+  simp
   unfold Array.instInhabited
-  unfold FreeM.foldM
+  simp
+  unfold Witnessable.witness
+  unfold instWitnessableZKExpr
   simp
   unfold bind
   unfold Monad.toBind
-  unfold instMonadZKBuilder
-  unfold inferInstance
-  unfold FreeM.instMonad
+  unfold StateT.instMonad -- instMonadZKBuilder
   simp
-  repeat unfold FreeM.bind
+  unfold StateT.bind
   simp
-  simp [FreeM.foldM, ZKOpInterp, semantics_constraints, semantics_zkexpr, semantics_zkexpr.eval, semantics_zkexpr.eval]
+  unfold witnessf
+  simp
+  -- unfold pure
+  unfold constrainEq2
+  unfold constrainR1CS
+  unfold constrainEq
+  unfold StateT.get
+  unfold StateT.set
+  simp
+  -- unfold pure
+  -- unfold Applicative.toPure
+  unfold Monad.toApplicative
+  unfold StateT.instMonad -- instMonadZKBuilder
+  simp
+  unfold StateT.bind
+  unfold StateT.map
+  simp
+
+  unfold semantics_constraints
+  unfold semantics_zkexpr
+  unfold semantics_zkexpr.eval
+  unfold semantics_zkexpr.eval
+  simp
+  unfold semantics_constraints
+  simp
+
 
 #check StateT.run_bind
 attribute [local simp] StateT.run_bind
@@ -357,37 +402,14 @@ theorem constrainEq3Trivial [ZKField f] (a b c:ZKExpr f) :
   mpure h
   simp [h]
   unfold constrainEq3
-  sorry
-  -- mspec (constrainEq2Trivial a b)
-  -- mintro ∀s2
-  -- mpure h
-  -- rename' h => hAB
-  -- mspec (constrainEq2Trivial b c)
-  -- mintro ∀s3
-  -- mpure h
-  -- simp [h, hAB]
-
-  -- mintro h ∀old
-  -- mpure h
-  -- simp [h]
-  -- unfold constrainEq3
-  -- unfold constrainEq2
-  -- unfold ZKBuilder.constrainR1CS
-  -- simp
-  -- unfold MPL.PredTrans.apply
-  -- unfold bind
-  -- unfold Monad.toBind
-  -- unfold instMonadZKBuilder
-  -- unfold inferInstance
-  -- unfold FreeM.instMonad
-  -- simp
-  -- repeat unfold FreeM.bind
-  -- constructor
-
-@[simp]
-lemma isSome_eq_true_iff {α : Type*} {o : Option α} :
-  o.isSome = true ↔ ∃ x, o = some x :=
-  by cases o <;> simp
+  mspec (constrainEq2Trivial a b)
+  mintro ∀s2
+  mpure h
+  rename' h => hAB
+  mspec (constrainEq2Trivial b c)
+  mintro ∀s3
+  mpure h
+  simp [h, hAB]
 
 theorem constrainEq2Sound' [ZKField f] (a b:ZKExpr f) (witness: List f) :
   ⦃λ s => True ⦄ -- eval_circuit s witness ⦄
@@ -397,65 +419,8 @@ theorem constrainEq2Sound' [ZKField f] (a b:ZKExpr f) (witness: List f) :
     eval_exprf a s witness == eval_exprf b s witness ⌝
   ⦄
   := by
-  simp [run_circuit', runFold, circuit1, FreeM.foldM, Witnessable.witness, ZKBuilder.witness, FreeM.foldM]
-  unfold constrainEq2
-  unfold ZKBuilder.constrainR1CS
-  simp
-  unfold MPL.Triple
-  simp [MPL.SPred.entails]
-  intro s'
-  unfold MPL.PredTrans.apply
-  unfold MPL.wp
-  unfold instWPZKBuilderArgZKBuilderStatePureOfZero
-  unfold MPL.PredTrans.pure
-  simp [runFold]
-  simp [eval_circuit, FreeM.foldM, ZKOpInterp, eval_exprf, semantics, semantics_constraints]
-  unfold ZKBuilderState.ram_sizes
-  simp [semantics_zkexpr]
-  simp [semantics_zkexpr.eval]
-  constructor
-  intro h
-  cases h' : (semantics_ram witness s'.3 s'.ram_ops)
-  · simp
-  · case mp.some v =>
-    rw [h'] at h
-    simp at *
-    cases h₁ : Option.isSome (semantics_zkexpr.eval witness v a)
-    · simp at h₁
-      simp [h₁] at h
-    · unfold Option.isSome at h₁
-      have exists_x : ∃ x, semantics_zkexpr.eval witness v a = some x := by
-        apply isSome_eq_true_iff.mp h₁
-      cases' exists_x with x hx
-      simp [hx] at h
-      cases h₂ : Option.isSome (semantics_zkexpr.eval witness v b)
-      · simp at h₂
-        simp [h₂] at h
-      · unfold Option.isSome at h₂
-        have exists_y : ∃ y, semantics_zkexpr.eval witness v b = some y := by
-          apply isSome_eq_true_iff.mp h₂
-        cases' exists_y with y hy
-        simp [hy] at h
-        cases' h with xeqy constraints
-        simp [xeqy] at hx
-        simp [constraints] at hy
-        rw [← hy] at hx
-        exact hx
-  · intro h
-    cases h' : (semantics_ram witness s'.3 s'.ram_ops)
-    simp at h
-    simp
-    simp [h'] at h
-    unfold semantics_ram at h'
-    unfold semantics_zkexpr at h'
-    unfold semantics_zkexpr.eval at h'
-    sorry
-    · case mpr.some v =>
-      simp [h'] at h
-      simp at *
-      cases h₁ : Option.isSome (semantics_zkexpr.eval witness v a)
-      sorry
-      sorry
+
+  sorry
 
 set_option grind.warning false
 
@@ -470,176 +435,60 @@ theorem constrainEq3Transitive [ZKField f] (a b c:ZKExpr f) (witness: List f) :
   mintro h0 ∀s0
   mpure h0
   unfold constrainEq3
-  unfold constrainEq2
-  unfold ZKBuilder.constrainR1CS
+  -- mwp
+
+  mspec (constrainEq2Sound' a b witness)
+  mcases h with hAB
+  mintro ∀s1
+  mpure hAB
+
+  have hCompose :
+    ⦃λ s => s = s1 ∧ True ∧ s = s1 ∧ s = s1⦄
+    constrainEq2 b c
+    ⦃⇓ _r s =>
+      ⌜eval_circuit s witness → eval_circuit s1 witness⌝
+      ∧
+      ⌜ eval_circuit s witness ↔
+      eval_exprf b s witness == eval_exprf c s witness ⌝
+      ∧
+      ⌜eval_exprf a s1 witness = eval_exprf a s witness⌝
+      ∧
+      ⌜eval_exprf b s1 witness = eval_exprf b s witness⌝
+    ⦄
+    := MPL.Triple.and (constrainEq2 b c)
+       (previous_success (constrainEq2 b c) witness)
+       (MPL.Triple.and (constrainEq2 b c)
+         (constrainEq2Sound' b c witness)
+         (MPL.Triple.and (constrainEq2 b c)
+         (eval_const (constrainEq2 b c) witness a)
+         (eval_const (constrainEq2 b c) witness b)))
+
+  mspec hCompose
+
+  mintro ∀s2
   simp
-  intro s'
-  sorry
-  -- mintro ∀s1
-  -- mpure hAB
+  intro hBC
 
-  -- have hCompose :
-  --   ⦃λ s => s = s1 ∧ True ∧ s = s1 ∧ s = s1⦄
-  --   constrainEq2 b c
-  --   ⦃⇓ _r s =>
-  --     ⌜eval_circuit s witness → eval_circuit s1 witness⌝
-  --     ∧
-  --     ⌜ eval_circuit s witness ↔
-  --     eval_exprf b s witness == eval_exprf c s witness ⌝
-  --     ∧
-  --     ⌜eval_exprf a s1 witness = eval_exprf a s witness⌝
-  --     ∧
-  --     ⌜eval_exprf b s1 witness = eval_exprf b s witness⌝
-  --   ⦄
-  --   := MPL.Triple.and (constrainEq2 b c)
-  --      (previous_success (constrainEq2 b c) witness)
-  --      (MPL.Triple.and (constrainEq2 b c)
-  --        (constrainEq2Sound' b c witness)
-  --        (MPL.Triple.and (constrainEq2 b c)
-  --        (eval_const (constrainEq2 b c) witness a)
-  --        (eval_const (constrainEq2 b c) witness b)))
+  intro hS2'
+  intro hA
+  intro hB
+  intro hS2
 
-  -- mspec hCompose
+  have hEvalBC: eval_exprf b s2 witness = eval_exprf c s2 witness := by apply hS2'.mp hS2
+  rw [← hEvalBC]
 
-  -- mintro ∀s2
-  -- simp
-  -- intro hBC
+  have hCompose2: eval_circuit s2 witness → eval_circuit s1 witness := by
+    exact hBC
 
-  -- intro hS2'
-  -- intro hA
-  -- intro hB
-  -- intro hS2
+  have hS1: eval_circuit s1 witness := by
+    apply hCompose2 at hS2
+    exact hS2
 
-  -- have hEvalBC: eval_exprf b s2 witness = eval_exprf c s2 witness := by apply hS2'.mp hS2
-  -- rw [← hEvalBC]
-
-  -- have hCompose2: eval_circuit s2 witness → eval_circuit s1 witness := by
-  --   exact hBC
-
-  -- have hS1: eval_circuit s1 witness := by
-  --   apply hCompose2 at hS2
-  --   exact hS2
-
-  -- have hP1: eval_exprf a s1 witness = eval_exprf b s1 witness := by
-  --   simp at hAB
-  --   grind
-  -- have hP2: eval_exprf a s2 witness = eval_exprf b s2 witness := by
-  --   rw [hA] at hP1
-  --   rw [hB] at hP1
-  --   exact hP1
-  -- exact hP2
-
-
---axiom prime_4139 : Nat.Prime 4139
---------- SET UP TO EVALUATE  CIRCUITS ---------------
---instance : Fact (Nat.Prime 4139) := by prime_4139
-
--- instance : ZKField (ZMod 4139) where
---   hash x :=
---     match x.val with
---     | 0 => 0
---     | n + 1 => hash n
-
---   chunk_to_bits {num_bits: Nat} f :=
---     let bv : BitVec 13 := BitVec.ofFin (Fin.castSucc f)
---     -- TODO: Double check the endianess.
---     Vector.map (fun i =>
---       if _:i < 3 then
---         if bv[i] then 1 else 0
---       else
---         0
---     ) (Vector.range num_bits)
-
--- instance : Witnessable (ZMod 4139) (ZMod 4139) := by sorry
-
--- Full proof that 4139 is prime using Nat.prime_def_lt
-
----------------------- SAMPLE XOR CIRCUIT --------------------
-
--- def XOR_16 [Field f] : Subtable f 16 :=
---   subtableFromMLE (fun x => 0 + 1*((1 - x[7])*x[15] + x[7]*(1 - x[15])) + 2*((1 - x[6])*x[14] + x[6]*(1 - x[14])) + 4*((1 - x[5])*x[13] + x[5]*(1 - x[13])) + 8*((1 - x[4])*x[12] + x[4]*(1 - x[12])) + 16*((1 - x[3])*x[11] + x[3]*(1 - x[11])) + 32*((1 - x[2])*x[10] + x[2]*(1 - x[10])) + 64*((1 - x[1])*x[9] + x[1]*(1 - x[9])) + 128*((1 - x[0])*x[8] + x[0]*(1 - x[8])))
-
--- def XOR_32_4_16 [Field f] : ComposedLookupTable f 16 4
---   := mkComposedLookupTable #[ (XOR_16, 0), (XOR_16, 1), (XOR_16, 2), (XOR_16, 3) ].toVector (fun x => 0 + 1*x[3] + 1*256*x[2] + 1*256*256*x[1] + 1*256*256*256*x[0])
-
-
-
--- set_option diagnostics true
-
--- def xor_circuit [ZKField f] : ZKBuilder f PUnit := do
---   let a <- Witnessable.witness
---   let b <- Witnessable.witness
---   let aa <- Witnessable.witness
---   let bb <- Witnessable.witness
---   let c <- Witnessable.witness
---   let res <- lookup XOR_32_4_16 #v[a, aa, bb, b]
---   constrainEq res c
-
--- -- xor circuit
-
--- #eval run_circuit xor_circuit default [0, one, one, one, 0]
-
-
-
--- ---------------------- TESTS FOR ADD & SUB --------------------
-
-
-
-
-
-
-
--- def IDENTITY_16 [Field f] : Subtable f 16 :=
---   subtableFromMLE (fun x => 0 + 1*x[15] + 2*x[14] + 4*x[13] + 8*x[12] + 16*x[11] + 32*x[10] + 64*x[9] + 128*x[8] + 256*x[7] + 512*x[6] + 1024*x[5] + 2048*x[4] + 4096*x[3] + 8192*x[2] + 16384*x[1] + 32768*x[0])
-
--- def ADD_32_4_16 [Field f] : ComposedLookupTable f 16 4
---  := mkComposedLookupTable #[ (IDENTITY_16, 2), (IDENTITY_16, 3) ].toVector (fun x => 0 + 1*x[1] + 1*65536*x[0])
--- def SUB_32_4_16 [Field f] : ComposedLookupTable f 16 4
---  := mkComposedLookupTable #[ (IDENTITY_16, 2), (IDENTITY_16, 3) ].toVector (fun x => 0 + 1*x[1] + 1*65536*x[0])
-
-
---  def add_circuit [ZKField f] : ZKBuilder f PUnit := do
---   let a <- Witnessable.witness
---   let b <- Witnessable.witness
---   let aa <- Witnessable.witness
---   let bb <- Witnessable.witness
---   let c <- Witnessable.witness
---   let res <- lookup ADD_32_4_16 #v[a, b, aa, bb]
---   constrainEq res c
-
-
-
--- def sub_circuit [ZKField f] : ZKBuilder f PUnit := do
---   let a <- Witnessable.witness
---   let b <- Witnessable.witness
---   let aa <- Witnessable.witness
---   let bb <- Witnessable.witness
---   let c <- Witnessable.witness
---   let res <- lookup SUB_32_4_16 #v[a, b, aa, bb]
---   constrainEq res c
-
-
-
-
--- def two : ZMod 7 := 2
--- def three : ZMod 7 := 3
--- def four : ZMod 7 := 4
--- def five : ZMod 7 := 5
--- def six : ZMod 7 := 4
-
-
--- --- (65536 * 1 + 1 ) % 7 = 3
--- #eval run_circuit add_circuit default [0, 0, one, one, three]
--- #eval run_circuit sub_circuit default [0, 0, one, one, three]
-
-
--- --why is this true ???
--- --  (65536 * 1 + 2 ) % 7 = 5...
--- -- Hypothesis because idenitity reverses things so then we actually have
--- -- (65536 * 32768 + 2 * 16384) % 7 = 3...
--- #eval run_circuit add_circuit default [two, 0, two, one, two]
--- #eval run_circuit sub_circuit default [two, three, two, one, two]
-
-
--- -- this returns false for all values inside 7...
--- #eval run_circuit add_circuit default [0, 0, one, two, six]
+  have hP1: eval_exprf a s1 witness = eval_exprf b s1 witness := by
+    simp at hAB
+    grind
+  have hP2: eval_exprf a s2 witness = eval_exprf b s2 witness := by
+    rw [hA] at hP1
+    rw [hB] at hP1
+    exact hP1
+  exact hP2
