@@ -2,8 +2,6 @@ import Std.Data.HashMap.Basic
 import ZkLean.AST
 import ZkLean.LookupTable
 import ZkLean.FreeMonad
---import Std.Do
---import Std.Tactic.Do
 import MPL
 
 /-- Type for RAM operations (Read and Write) -/
@@ -204,7 +202,7 @@ instance [Witnessable f a]: Witnessable f (Vector a n) where
   witness :=
     let rec helper n : ZKBuilder f (Vector a n) :=
       match n with
-      | 0 => pure (Vector.emptyWithCapacity 0)
+      | 0 => pure (Vector.mkEmpty 0)
       | m+1 => do
         let w <- Witnessable.witness
         let v <- helper m
@@ -212,8 +210,8 @@ instance [Witnessable f a]: Witnessable f (Vector a n) where
     do
       helper n
 
---open Std.Do
 open MPL
+
 /-- `ZKBuilder` admits a weakest‐precondition interpretation in terms of the
 `MPL` predicate–transformer semantics.  A builder computation manipulates an
 implicit `ZKBuilderState`; therefore its predicate shape is `PostShape.arg

@@ -97,7 +97,7 @@ def semantics_ram [ZKField f]
   (ram_ops: Array (RamOp f))
   : Option (RamOpsEval f) := do
   -- Let's create the empty environment
-  let empty_env: RamEnv f := Array.replicate ram_sizes.size (Std.HashMap.emptyWithCapacity 0);
+  let empty_env: RamEnv f := Array.mkArray ram_sizes.size (Std.HashMap.empty);
 
   -- call the function `semantics_zkexpr` and extract the field value in an option
   let semantics_zkexpr_f expr witness ops_eval :=
@@ -168,6 +168,3 @@ def semantics [ZKField f] (witness: List f) (state: ZKBuilderState f) : Bool :=
   else
     -- If the RAM values are not valid, we return
     false
-
-
----
