@@ -210,6 +210,13 @@ lemma ZMod.eq_if_val [NeZero ff]  (a b : ZMod ff) :
   apply ZMod.val_injective at h
   exact h
 
+lemma BitVec_ofNat_eq_iff {x y : ℕ} [NeZero w]:
+  (x = y) -> (BitVec.ofNat w x = BitVec.ofNat w y) := by
+  intro h
+  rw [h]
+
+
+
 
 lemma BitVec_ofNat_eq_iff_8 {x y : ℕ} (hx : x < 2^8) (hy : y < 2^8) :
   (x = y) <-> (BitVec.ofNat 8 x = BitVec.ofNat 8 y) := by
