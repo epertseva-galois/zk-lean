@@ -51,7 +51,7 @@ def BvMod_eq.bv_to_f  (a: BitVec  2) : (f) :=
 
 lemma bvmul_2:
 
- (     ( fresh_pf0_sum_bit0  *fresh_pf0_sum_bit0) = fresh_pf0_sum_bit0) ->
+ (   ( fresh_pf0_sum_bit0  *fresh_pf0_sum_bit0) = fresh_pf0_sum_bit0) ->
       ( fresh_pf1_sum_bit1 * fresh_pf1_sum_bit1) = fresh_pf1_sum_bit1 ->
      ( ( fresh_pf2_sum_bit2 * fresh_pf2_sum_bit2)  = fresh_pf2_sum_bit2) ->
      ( ( fresh_pf3_sum_bit3 * fresh_pf3_sum_bit3) = fresh_pf3_sum_bit3) ->
