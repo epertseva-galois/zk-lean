@@ -93,7 +93,6 @@ lemma extract_bv_rel {b: ℕ} {x : ZMod ff} [h0: NeZero b]   :
  some (bool_to_bv b bf) = map_f_to_bv b x
  -> ((x.val <= 1) ∧  ∀ (w:Nat), (w > b) -> (if bf then 1#w else 0#w) = BitVec.ofNat w x.val)
  := by
- --sorry
  unfold map_f_to_bv
  unfold bool_to_bv
  dsimp

@@ -14,6 +14,19 @@ import BVModEq.BVify
 open Lean Meta Elab Tactic
 open Lean.Parser.Tactic
 
+
+
+elab "arith_portfolio_smt" : tactic => do
+  evalTactic (← `(tactic|
+    first
+    | nlinarith
+    | linarith
+    | omega
+    | ring_nf    -- optional: enables monomorphization
+    | grind
+    | aesop
+  ))
+
 lemma Nat.gt_sub {a c: ℕ} : (a - c) >= 0 := by omega
 
 lemma Nat.mul_comm_ofNat (a n : Nat) :
@@ -1037,7 +1050,7 @@ def findAndApplyRangeAnalysisLemma (loopBodyReturn : LoopBodyLabel)
 @[tactic tryApplyLemHyps]
 elab_rules : tactic
 | `(tactic| try_apply_lemma_hyps [$hs,*]) => do
-  let hyps := (hs.getElems.map (·.getId)).toList
+  -- let hyps := (hs.getElems.map (·.getId)).toList
   let mut progress := true
   let mut need_to_valify :=false
   let mut sargs :
@@ -1052,52 +1065,54 @@ elab_rules : tactic
                   `Lean.Parser.Tactic.simpLemma] :=
           ⟨sa.raw⟩
           sargs := sargs.push ua
-  -- begin by factoring out multiplication for all goals
-  -- important for mux discovery
-  evalTactic (← `(tactic| all_goals try rw [neg_add_to_sub]))
-  evalTactic (← `(tactic| all_goals try rw [<- sub_eq_add_neg]))
-  evalTactic (← `(tactic| all_goals try rw [neg_param]))
-  evalTactic (← `(tactic| all_goals try rw [sub_add_right_recursive]))
-  evalTactic (← `(tactic|  all_goals try simp [Nat.mul_assoc]))
-  let mut sanity <- getGoals
-  if sanity.isEmpty then
-    return
-  let mut cont := true
-  let mut count  := 0
-  while (cont ) do
-    try
-      evalTactic (← `(tactic| all_goals rw [Nat.mul_comm_ofNat]))
-    catch _ =>
-      cont := false
-  evalTactic (← `(tactic| try all_goals simp [Nat.mul_assoc]))
+  -- -- begin by factoring out multiplication for all goals
+  -- -- important for mux discovery
+  -- evalTactic (← `(tactic| all_goals try rw [neg_add_to_sub]))
+  -- evalTactic (← `(tactic| all_goals try rw [<- sub_eq_add_neg]))
+  -- evalTactic (← `(tactic| all_goals try rw [neg_param]))
+  -- evalTactic (← `(tactic| all_goals try rw [sub_add_right_recursive]))
+  -- evalTactic (← `(tactic|  all_goals try simp [Nat.mul_assoc]))
+  -- let mut sanity <- getGoals
+  -- if sanity.isEmpty then
+  --   return
+  -- let mut cont := true
+  -- let mut count  := 0
+  -- while (cont ) do
+  --   try
+  --     evalTactic (← `(tactic| all_goals rw [Nat.mul_comm_ofNat]))
+  --   catch _ =>
+  --     cont := false
+  -- evalTactic (← `(tactic| try all_goals simp [Nat.mul_assoc]))
 
   let mut did_mux := false
   let mut stop_completely := false
   -- as long as we are making progress then continue
-  count  := 0
+  let mut count  := 0
   while (progress ) do
     --logInfo m!"we get here? "
+    progress := false
     count := count + 1
     if stop_completely then
       logInfo m!"STAP"
       progress := false
-      return
-    if did_mux then do
-      --logInfo m! "We are post did mux"
-      didMux
-      did_mux := false
+  --     return
+  --   if did_mux then do
+  --     --logInfo m! "We are post did mux"
+  --     didMux
+  --     did_mux := false
     let goals ← getGoals
     let mut updatedGoalsReversed : List MVarId := [] -- to keep track of goals we changed
     let mut handled := false
-    progress := false
+    --progress := false
     -- Note: do not use `enqueueAll` as it would need reversing the list
     let mut goalQueue := Std.Queue.mk [] goals
     while (not handled && not goalQueue.isEmpty  ) do
-      count := count + 1
+     -- count := count + 1
       let mut some (g, rest) := goalQueue.dequeue? | unreachable!
       goalQueue := rest
       if (← g.isAssigned) then
         updatedGoalsReversed := g :: updatedGoalsReversed
+        progress := true
         continue
       setGoals [g] -- focus on one goal at a time
      -- logInfo m! "{g}"
@@ -1268,182 +1283,195 @@ elab_rules : tactic
           --logInfo m! "but not here?"
           continue
       --logInfo m!"umm..."
-      let loopBodyResult ← (ContT.run · pure) $ MonadCont.callCC $ fun loopBodyReturn => do
-        --logInfo m!"here?"
-        if args.size > 3 then
-          let g ← getMainGoal
-          let goalType ← g.getType
-          let e ← instantiateMVars goalType
-          let args := e.getAppArgs
-          -- First check if we are dealing with a mux
-          handleIfMux loopBodyReturn g args
-          --logInfo m!"Passed MUX?"
-          --logInfo m! "{<- getGoals}"
-
-          -- if not a mux but we have only two variables do a case by case reasoning
-          -- this is necessary in case of variable dependencies
-          -- Ex: x1 + x2 - x1*x2 --> Can't be negative but needs to be proven
-          -- - First check that only 2 variables exist & a subtraction is involved
-          -- then make sure all variables are bounded <= 1
-          -- TODO: this should be check to containsSUb OR both sides are applications
-          --logInfo m! "TERMS{terms.toList}"
-          --logInfo m! "TERMS{bothArgsAreApps instantiatedGoalType}"
-          if ((terms.size = 2))  && ( (← containsSub instantiatedGoalType) ||  bothArgsAreApps instantiatedGoalType )  then
-             --try
-             --logInfo m! "HASSDSA"
-             caseByCaseOnTwoVariables loopBodyReturn g hyps terms
-            -- catch _ => pure ()
-          --logInfo m!"{ exprHasNestedIf instantiatedGoalType}"
-          if exprHasNestedIf instantiatedGoalType then
-            let g <- getMainGoal
-            logInfo m!"DAMMIT"
-            try
-              monadLift $ do evalTactic (← `(tactic| split_ifs))
-              let g' <- getMainGoal
-
-              if (← g.isAssigned)  then
-                logInfo m!"We are here :({g}"
-                return { didMux := false, madeProgress := true, goals := <- getGoals , leftSide := false, stopCompletely:= false}
-            catch _ => pure ()
-          --try to apply Lean's range analysis lemmas
-          -- for n in terms.toArray do
-          --   logInfo m!"{n}"
-           --  logInfo m!"✅ Stuck on {goalType} with {terms.size}"
-          --logInfo m!"HERE?"
-          if terms.size >= 1 then
-            findAndApplyRangeAnalysisLemma loopBodyReturn terms g instantiatedGoalType hyps
-          else
-            --logInfo m!"NO TERMS"
-            let rfl ← monadLift (m := TacticM) ``(Nat.le_refl)
-            let bitvec ← monadLift (m := TacticM) ``(BitVec.toNatLT)
-            let modLemma ← monadLift (m := TacticM) ``(mod_le_pred)
-            let (fn, args) := instantiatedGoalType.getAppFnArgs
- -- logInfo m! "{args[args.size-1]!} => {containsMVar args[args.size-1]!}"
-            let unfolded := ← monadLift $ withTransparency .reducible (whnf args[2]!)
-            let fn3 := unfolded.getAppFn
-           -- logInfo m! "{containsMVar instantiatedGoalType}"
-               match fn with
-                  | ``LE.le =>
-                  --if containsMVar instantiatedGoalType then
-                      match fn3 with
-                        | Expr.const name _ =>
-                          match name with
-                          --| ``OfNat.ofNat => applyThisLemma loopBodyReturn g instantiatedGoalType false rfl
-                          | ``ZMod.val =>
-                              applyZModLemma loopBodyReturn g  instantiatedGoalType false hyps
-                          | ``BitVec.toNat =>
-                              if exprHasMod instantiatedGoalType then
-                                applyThisLemma loopBodyReturn g instantiatedGoalType false modLemma
-                              else
-                                 applyThisLemma loopBodyReturn g instantiatedGoalType false bitvec
-                          --|  ``HMod.hMod => applyThisLemma loopBodyReturn g instantiatedGoalType false modLemma
-                          -- rfl is a place holder should be something else
-                          | _ =>
-                              --logInfo m! "rl here"
-                              -- this is good we have zero variables we should do this
-                              if containsMVar instantiatedGoalType then
-                                applyNatLeRefl2 loopBodyReturn g instantiatedGoalType false rfl
-                              else
-                                pure ()
-
-                        | _ =>
-                           --logInfo m! "No rfl here! Wow"
-                          if containsMVar instantiatedGoalType then
-                              applyNatLeRefl2 loopBodyReturn g instantiatedGoalType false rfl
-                          else
-                              pure ()
-                  -- | ``LT.lt =>
-                  --   match fn3 with
-                  --     | Expr.const name _ =>
-                  --         match name with
-                  --        -- |  ``HMod.hMod => applyThisLemma loopBodyReturn g instantiatedGoalType false modLemma
-                  --          | _ => pure ()
-                  --     | _ => pure ()
-                  | _ => pure ()
-            --applyThisLemma loopBodyReturn g instantiatedGoalType rfl
-            --findAndApplyRangeAnalysisLemma loopBodyReturn terms g instantiatedGoalType hyps
-
-        -- if other techniques did not work try decide
-        if (terms.size = 0) && isIneq instantiatedGoalType then
-          try
-            monadLift $ do evalTactic (← `(tactic| decide))
-            --logInfo m! "Issue here!!"
-            if ← g.isAssigned then
-              --logInfo m!"✅ Fully solved goal using decide {goalType}"
-              return { didMux := false, madeProgress := true, goals := [g] , leftSide := false, stopCompletely:= false}
-          catch _err =>
-              --logInfo m! "Decide failed on {g}"
-              return { didMux := false, madeProgress := false, goals := [g] , leftSide := false, stopCompletely:= true}
-        -- last shot try simp
-
-        try
-          --logInfo m!"We are here?"
-          monadLift $ do evalTactic (← `(tactic|  focus
-                  (split_ifs; all_goals simp ) ))
-          if ← g.isAssigned then
-            --logInfo m!"✅ Fully solved goal using simp {goalType}"
-            let mut gs <- getGoals
-            return { didMux := false, madeProgress := true, goals := gs , leftSide :=false, stopCompletely:=false}
-        catch _err => pure ()
-        try
-          --logInfo m!"We are here?"
-          monadLift $ do evalTactic (← `(tactic| exact 0 ) )
-          if ← g.isAssigned then
-            --logInfo m!"✅ Fully solved goal using simp {goalType}"
-            let mut gs <- getGoals
-            return { didMux := false, madeProgress := true, goals := gs , leftSide :=false, stopCompletely:=false}
-        catch _err => pure ()
-        -- if we made it here, nothing worked
-        return { didMux := false, madeProgress := false, goals := [g], leftSide:=false, stopCompletely:= false }
-      --throwError "AAAA"
-      if loopBodyResult.didMux then
-          did_mux := true
-          --stop_completely := true
-      if loopBodyResult.stopCompletely then stop_completely := true
-      if loopBodyResult.madeProgress then do
-        handled := true; progress := true
-      if loopBodyResult.leftSide && !did_mux then
-         --logInfo m! "LEFTSIDE: {loopBodyResult.leftSide}"
-         let rev := loopBodyResult.goals
-         --logInfo m! "{rev}"
-         let rev :=
-            match rev with
-            | a :: b :: rest => b :: a :: rest
-            | _ =>
-              rev
-          updatedGoalsReversed :=  updatedGoalsReversed ++ rev.reverse
+      --let loopBodyResult ← (ContT.run · pure) $ MonadCont.callCC $ fun loopBodyReturn => do
+      evalTactic (← `(tactic| arith_portfolio_smt))
+      if (<-getGoals).isEmpty then
+          setGoals (updatedGoalsReversed.reverse ++ goalQueue.dList ++ goalQueue.eList.reverse)
+          progress:= true
+          handled := true
       else
-        --logInfo m! "we are here?"
-        updatedGoalsReversed := loopBodyResult.goals.reverse ++ updatedGoalsReversed
-    -- Note: we built the updated goals list in reverse to avoid repeatedly
-    -- traversing an ever-growingly long prefix.
+         progress := false
 
-    setGoals (updatedGoalsReversed.reverse ++ goalQueue.dList ++ goalQueue.eList.reverse)
-    --logInfo m! "We are done?"
-    -- if (!progress) then
-    --   try
-    --     evalTactic (← `(tactic| omega))
-    --     --logInfo m! "Issue here?"
-    --     --handled := true; progress := true
-    --     progress:= true
-    --   catch _ => pure ()
-    -- if (!progress) then
-    --   try
-    --     let g <- getMainGoal
-    --     --logInfo m! "NO the issue is here?\n {g}"
-    --     evalTactic (← `(tactic| simp))
-    --     --handled := true; progress := true
-    --     progress:= true
-    --   catch _ => pure ()
--- abbrev ffff0 := 52435875175126190479447740508185965837690552500527637822603658699938581184513
--- instance : Fact (Nat.Prime ffff0) := by sorry
--- instance : Fact (NeZero ffff0) := by sorry
--- instance NotTwo: BVModEq.GtTwo (ffff0) := by sorry
 
---  abbrev FF0 := ZMod 52435875175126190479447740508185965837690552500527637822603658699938581184513
--- lemma gr {b: BitVec 3} : (if b[0] = true then 1 else 0 + if b[1] = true then 2 else 0) <
---   57896044618658097711785492504343953926634992332820282019728792003956564819968 := by
---    try_apply_lemma_hyps[]
+
+example (x y : ℤ) : x + y <= y + x := by
+  try_apply_lemma_hyps []
+
+        --logInfo m!"here?"
+--         if args.size > 3 then
+--           let g ← getMainGoal
+--           let goalType ← g.getType
+--           let e ← instantiateMVars goalType
+--           let args := e.getAppArgs
+--           -- First check if we are dealing with a mux
+--           handleIfMux loopBodyReturn g args
+--           --logInfo m!"Passed MUX?"
+--           --logInfo m! "{<- getGoals}"
+
+--           -- if not a mux but we have only two variables do a case by case reasoning
+--           -- this is necessary in case of variable dependencies
+--           -- Ex: x1 + x2 - x1*x2 --> Can't be negative but needs to be proven
+--           -- - First check that only 2 variables exist & a subtraction is involved
+--           -- then make sure all variables are bounded <= 1
+--           -- TODO: this should be check to containsSUb OR both sides are applications
+--           --logInfo m! "TERMS{terms.toList}"
+--           --logInfo m! "TERMS{bothArgsAreApps instantiatedGoalType}"
+--           if ((terms.size = 2))  && ( (← containsSub instantiatedGoalType) ||  bothArgsAreApps instantiatedGoalType )  then
+--              --try
+--              --logInfo m! "HASSDSA"
+--              caseByCaseOnTwoVariables loopBodyReturn g hyps terms
+--             -- catch _ => pure ()
+--           --logInfo m!"{ exprHasNestedIf instantiatedGoalType}"
+--           if exprHasNestedIf instantiatedGoalType then
+--             let g <- getMainGoal
+--             logInfo m!"DAMMIT"
+--             try
+--               monadLift $ do evalTactic (← `(tactic| split_ifs))
+--               let g' <- getMainGoal
+
+--               if (← g.isAssigned)  then
+--                 logInfo m!"We are here :({g}"
+--                 return { didMux := false, madeProgress := true, goals := <- getGoals , leftSide := false, stopCompletely:= false}
+--             catch _ => pure ()
+--           --try to apply Lean's range analysis lemmas
+--           -- for n in terms.toArray do
+--           --   logInfo m!"{n}"
+--            --  logInfo m!"✅ Stuck on {goalType} with {terms.size}"
+--           --logInfo m!"HERE?"
+--           if terms.size >= 1 then
+--             findAndApplyRangeAnalysisLemma loopBodyReturn terms g instantiatedGoalType hyps
+--           else
+--             --logInfo m!"NO TERMS"
+--             let rfl ← monadLift (m := TacticM) ``(Nat.le_refl)
+--             let bitvec ← monadLift (m := TacticM) ``(BitVec.toNatLT)
+--             let modLemma ← monadLift (m := TacticM) ``(mod_le_pred)
+--             let (fn, args) := instantiatedGoalType.getAppFnArgs
+--  -- logInfo m! "{args[args.size-1]!} => {containsMVar args[args.size-1]!}"
+--             let unfolded := ← monadLift $ withTransparency .reducible (whnf args[2]!)
+--             let fn3 := unfolded.getAppFn
+--            -- logInfo m! "{containsMVar instantiatedGoalType}"
+--                match fn with
+--                   | ``LE.le =>
+--                   --if containsMVar instantiatedGoalType then
+--                       match fn3 with
+--                         | Expr.const name _ =>
+--                           match name with
+--                           --| ``OfNat.ofNat => applyThisLemma loopBodyReturn g instantiatedGoalType false rfl
+--                           | ``ZMod.val =>
+--                               applyZModLemma loopBodyReturn g  instantiatedGoalType false hyps
+--                           | ``BitVec.toNat =>
+--                               if exprHasMod instantiatedGoalType then
+--                                 applyThisLemma loopBodyReturn g instantiatedGoalType false modLemma
+--                               else
+--                                  applyThisLemma loopBodyReturn g instantiatedGoalType false bitvec
+--                           --|  ``HMod.hMod => applyThisLemma loopBodyReturn g instantiatedGoalType false modLemma
+--                           -- rfl is a place holder should be something else
+--                           | _ =>
+--                               --logInfo m! "rl here"
+--                               -- this is good we have zero variables we should do this
+--                               if containsMVar instantiatedGoalType then
+--                                 applyNatLeRefl2 loopBodyReturn g instantiatedGoalType false rfl
+--                               else
+--                                 pure ()
+
+--                         | _ =>
+--                            --logInfo m! "No rfl here! Wow"
+--                           if containsMVar instantiatedGoalType then
+--                               applyNatLeRefl2 loopBodyReturn g instantiatedGoalType false rfl
+--                           else
+--                               pure ()
+--                   -- | ``LT.lt =>
+--                   --   match fn3 with
+--                   --     | Expr.const name _ =>
+--                   --         match name with
+--                   --        -- |  ``HMod.hMod => applyThisLemma loopBodyReturn g instantiatedGoalType false modLemma
+--                   --          | _ => pure ()
+--                   --     | _ => pure ()
+--                   | _ => pure ()
+--             --applyThisLemma loopBodyReturn g instantiatedGoalType rfl
+--             --findAndApplyRangeAnalysisLemma loopBodyReturn terms g instantiatedGoalType hyps
+
+--         -- if other techniques did not work try decide
+--         if (terms.size = 0) && isIneq instantiatedGoalType then
+--           try
+--             monadLift $ do evalTactic (← `(tactic| decide))
+--             --logInfo m! "Issue here!!"
+--             if ← g.isAssigned then
+--               --logInfo m!"✅ Fully solved goal using decide {goalType}"
+--               return { didMux := false, madeProgress := true, goals := [g] , leftSide := false, stopCompletely:= false}
+--           catch _err =>
+--               --logInfo m! "Decide failed on {g}"
+--               return { didMux := false, madeProgress := false, goals := [g] , leftSide := false, stopCompletely:= true}
+--         -- last shot try simp
+
+--         try
+--           --logInfo m!"We are here?"
+--           monadLift $ do evalTactic (← `(tactic|  focus
+--                   (split_ifs; all_goals simp ) ))
+--           if ← g.isAssigned then
+--             --logInfo m!"✅ Fully solved goal using simp {goalType}"
+--             let mut gs <- getGoals
+--             return { didMux := false, madeProgress := true, goals := gs , leftSide :=false, stopCompletely:=false}
+--         catch _err => pure ()
+--         try
+--           --logInfo m!"We are here?"
+--           monadLift $ do evalTactic (← `(tactic| exact 0 ) )
+--           if ← g.isAssigned then
+--             --logInfo m!"✅ Fully solved goal using simp {goalType}"
+--             let mut gs <- getGoals
+--             return { didMux := false, madeProgress := true, goals := gs , leftSide :=false, stopCompletely:=false}
+--         catch _err => pure ()
+--         -- if we made it here, nothing worked
+--         return { didMux := false, madeProgress := false, goals := [g], leftSide:=false, stopCompletely:= false }
+--       --throwError "AAAA"
+--       if loopBodyResult.didMux then
+--           did_mux := true
+--           --stop_completely := true
+--       if loopBodyResult.stopCompletely then stop_completely := true
+--       if loopBodyResult.madeProgress then do
+--         handled := true; progress := true
+--       if loopBodyResult.leftSide && !did_mux then
+--          --logInfo m! "LEFTSIDE: {loopBodyResult.leftSide}"
+--          let rev := loopBodyResult.goals
+--          --logInfo m! "{rev}"
+--          let rev :=
+--             match rev with
+--             | a :: b :: rest => b :: a :: rest
+--             | _ =>
+--               rev
+--           updatedGoalsReversed :=  updatedGoalsReversed ++ rev.reverse
+--       else
+--         --logInfo m! "we are here?"
+--         updatedGoalsReversed := loopBodyResult.goals.reverse ++ updatedGoalsReversed
+--     -- Note: we built the updated goals list in reverse to avoid repeatedly
+--     -- traversing an ever-growingly long prefix.
+
+--     setGoals (updatedGoalsReversed.reverse ++ goalQueue.dList ++ goalQueue.eList.reverse)
+--     --logInfo m! "We are done?"
+--     -- if (!progress) then
+--     --   try
+--     --     evalTactic (← `(tactic| omega))
+--     --     --logInfo m! "Issue here?"
+--     --     --handled := true; progress := true
+--     --     progress:= true
+--     --   catch _ => pure ()
+--     -- if (!progress) then
+--     --   try
+--     --     let g <- getMainGoal
+--     --     --logInfo m! "NO the issue is here?\n {g}"
+--     --     evalTactic (← `(tactic| simp))
+--     --     --handled := true; progress := true
+--     --     progress:= true
+--     --   catch _ => pure ()
+-- -- abbrev ffff0 := 52435875175126190479447740508185965837690552500527637822603658699938581184513
+-- -- instance : Fact (Nat.Prime ffff0) := by sorry
+-- -- instance : Fact (NeZero ffff0) := by sorry
+-- -- instance NotTwo: BVModEq.GtTwo (ffff0) := by sorry
+
+-- --  abbrev FF0 := ZMod 52435875175126190479447740508185965837690552500527637822603658699938581184513
+-- -- lemma gr {b: BitVec 3} : (if b[0] = true then 1 else 0 + if b[1] = true then 2 else 0) <
+-- --   57896044618658097711785492504343953926634992332820282019728792003956564819968 := by
+-- --    try_apply_lemma_hyps[]
 
 
 
