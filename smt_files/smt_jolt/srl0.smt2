@@ -76,7 +76,11 @@
 (assert (= foutput (SRL0_16_FF v15 v14 v13 v12 v11 v10 v9 v8 v7 v6 v5 v4 v3 v2 v1 v0)))
 
 ;; bvoutput = bool_to_bv (bvule bv1 bv2)  (encoded as 0/1 BV)
-(assert (= bvoutput
+(assert
+  (= bvoutput
+     (bvlshr ((_ zero_extend 24) bv1)
+             ((_ zero_extend 24) bv2))))
+
 ;; TODO(BV-ENCODING):
 
 (declare-fun out0 () FF)

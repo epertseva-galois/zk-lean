@@ -76,12 +76,17 @@
 (assert (= foutput (SRA_SIGN_16_FF v15 v14 v13 v12 v11 v10 v9 v8 v7 v6 v5 v4 v3 v2 v1 v0)))
 
 ;; bvoutput = bool_to_bv (bvule bv1 bv2)  (encoded as 0/1 BV)
+;(assert bvoutput =
+;  (BitVec.sshiftRight (bv1.signExtend 32) 31)
+;  &&& (~~~ ((BitVec.ofNat 32 0xFFFF_FFFF) >>> bv2.toNat))
+;; TODO(BV-ENCODING):
+
 (assert
   (= bvoutput
-     (ite (= ((_ extract 7 7) bv1) #b1)
-          (_ bv65535 16)
-          (_ bv0 16))))
-;; TODO(BV-ENCODING):
+     (bvand
+       (bvashr ((_ sign_extend 24) bv1) (_ bv31 32))
+       (bvnot (bvlshr (_ bv4294967295 32) ((_ zero_extend 24) bv2))))))
+
 
 (declare-fun out0 () FF)
 (declare-fun out1 () FF)

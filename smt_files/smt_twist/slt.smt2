@@ -218,8 +218,14 @@
 (assert (= foutput (SLT_32_FF v63 v62 v61 v60 v59 v58 v57 v56 v55 v54 v53 v52 v51 v50 v49 v48 v47 v46 v45 v44 v43 v42 v41 v40 v39 v38 v37 v36 v35 v34 v33 v32 v31 v30 v29 v28 v27 v26 v25 v24 v23 v22 v21 v20 v19 v18 v17 v16 v15 v14 v13 v12 v11 v10 v9 v8 v7 v6 v5 v4 v3 v2 v1 v0)))
 
 ;; bvoutput = bool_to_bv (bvule bv1 bv2)  (encoded as 0/1 BV)
-(assert (= bvoutput
+;(assert (= bvoutput (bvslt bv1 bv2)))
 ;; TODO(BV-ENCODING):
+
+(assert
+  (= bvoutput
+     (ite (bvslt bv1 bv2)
+          (_ bv1 32)
+          (_ bv0 32))))
 
 (declare-fun out0 () FF)
 (declare-fun out1 () FF)

@@ -78,9 +78,8 @@
 ;; bvoutput = bool_to_bv (bvule bv1 bv2)  (encoded as 0/1 BV)
 (assert
   (= bvoutput
-     ((_ zero_extend 32)
-       (bvshl ((_ zero_extend 8) bv1)
-              ((_ zero_extend 8) bv2)))))
+     ((_ zero_extend 24)
+       (bvshl bv1 bv2))))
 
 ;; TODO(BV-ENCODING):
 
