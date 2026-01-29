@@ -1284,7 +1284,13 @@ elab_rules : tactic
           continue
       --logInfo m!"umm..."
       --let loopBodyResult ← (ContT.run · pure) $ MonadCont.callCC $ fun loopBodyReturn => do
-      evalTactic (← `(tactic| arith_portfolio_smt))
+      try
+        evalTactic (← `(tactic| arith_portfolio_smt))
+      catch _ =>
+          progress := false
+          handled:= true
+          setGoals (updatedGoalsReversed.reverse ++ goalQueue.dList ++ goalQueue.eList.reverse ++ (<-getGoals))
+          return
       if (<-getGoals).isEmpty then
           setGoals (updatedGoalsReversed.reverse ++ goalQueue.dList ++ goalQueue.eList.reverse)
           progress:= true
