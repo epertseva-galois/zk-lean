@@ -1291,13 +1291,11 @@ elab_rules : tactic
           handled := true
       else
          progress := false
+         handled:= true
          setGoals (updatedGoalsReversed.reverse ++ goalQueue.dList ++ goalQueue.eList.reverse ++ (<-getGoals))
          return
 
 
-
--- example (x y : ℤ) : x + y <= y + x := by
---   try_apply_lemma_hyps []
 
         --logInfo m!"here?"
 --         if args.size > 3 then
